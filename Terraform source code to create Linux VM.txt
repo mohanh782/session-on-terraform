@@ -1,0 +1,236 @@
+terraform {
+
+  required_providers {
+
+    azurerm = {
+
+      source  = "hashicorp/azurerm"
+
+      version = "3.58.0"
+
+    }
+
+  }
+
+}
+
+
+
+provider "azurerm" {
+
+  # Configuration options
+
+  subscription_id = "ce89XXXa-8b04-4d83-a75e-35e041f3bfb1"
+
+  client_id       = "57XXXXX-aa88-499a-8b18-f111eb753d92"
+
+  client_secret   = "2HVCCCCz4kqJ1lBefnIGrkvPFWtKlI4E7KBcdT"
+
+  tenant_id       = "3XXXX25-a8b8-4a09-bb34-76ffc4bc2f10"
+
+  features {}
+
+}
+
+
+
+resource "azurerm_resource_group" "RG" {
+
+  name     = "3tierArchRG"
+
+  location = "EAST US"
+
+}
+
+
+
+resource "azurerm_virtual_network" "AZVnetwork" {
+
+  name                = "Vnetwork"
+
+  address_space       = ["10.0.0.0/16"]
+
+  location            = azurerm_resource_group.RG.location
+
+  resource_group_name = azurerm_resource_group.RG.name
+
+}
+
+
+
+resource "azurerm_subnet" "AppSubnet" {
+
+  name                 = "AppSubnet1"
+
+  resource_group_name  = azurerm_resource_group.RG.name
+
+  virtual_network_name = azurerm_virtual_network.AZVnetwork.name
+
+  address_prefixes     = ["10.0.1.0/24"]
+
+  #network_security_group_id = azurerm_network_security_group.NSgrp.id
+
+}
+
+
+
+resource "azurerm_public_ip" "publicIP" {
+
+  name                = "Serverpublicip"
+
+  location            = azurerm_resource_group.RG.location
+
+  resource_group_name = azurerm_resource_group.RG.name
+
+  allocation_method   = "Static"
+
+}
+
+resource "azurerm_network_interface" "NIC" {
+
+  name                = "VM-nic"
+
+  location            = azurerm_resource_group.RG.location
+
+  resource_group_name = azurerm_resource_group.RG.name
+
+
+
+  ip_configuration {
+
+    name                          = "VMIP"
+
+    subnet_id                     = azurerm_subnet.AppSubnet.id
+
+    private_ip_address_allocation = "Dynamic"
+
+    public_ip_address_id          = azurerm_public_ip.publicIP.id
+
+  }
+
+
+
+}
+
+
+
+resource "azurerm_linux_virtual_machine" "LinuxVM" {
+
+  name                = "Linuxuser"
+
+  resource_group_name = azurerm_resource_group.RG.name
+
+  location            = azurerm_resource_group.RG.location
+
+  size                = "Standard_F2"
+
+  admin_username      = "adminuser"
+
+
+
+  network_interface_ids = [
+
+    azurerm_network_interface.NIC.id,
+
+  ]
+
+  admin_ssh_key {
+
+    username   = "adminuser"
+
+    public_key = file("~/.ssh/id_rsa.pub")
+
+  }
+
+  source_image_reference {
+
+    publisher = "Canonical"
+
+    offer     = "UbuntuServer"
+
+    sku       = "18.04-LTS"
+
+    version   = "latest"
+
+  }
+
+
+
+  os_disk {
+
+    caching              = "ReadWrite"
+
+    storage_account_type = "Standard_LRS"
+
+  }
+
+}
+
+
+
+
+resource "azurerm_network_security_group" "NSgrp" {
+
+  name                = "acceptanceTestSecurityGroup1"
+
+  location            = azurerm_resource_group.RG.location
+
+  resource_group_name = azurerm_resource_group.RG.name
+
+
+
+  security_rule {
+
+    name                       = "test123"
+
+    priority                   = 100
+
+    direction                  = "Inbound"
+
+    access                     = "Allow"
+
+    protocol                   = "Tcp"
+
+    source_port_range          = "*"
+
+    destination_port_range     = "22"
+
+    source_address_prefix      = "*"
+
+    destination_address_prefix = "*"
+
+  }
+
+  security_rule {
+
+    name                       = "test1234"
+
+    priority                   = 101
+
+    direction                  = "Inbound"
+
+    access                     = "Allow"
+
+    protocol                   = "Tcp"
+
+    source_port_range          = "*"
+
+    destination_port_range     = "80"
+
+    source_address_prefix      = "*"
+
+    destination_address_prefix = "*"
+
+  }
+
+}
+
+
+
+resource "azurerm_subnet_network_security_group_association" "SubnetNSGRule" {
+
+  subnet_id                 = azurerm_subnet.AppSubnet.id
+
+  network_security_group_id = azurerm_network_security_group.NSgrp.id
+
+}
